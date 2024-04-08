@@ -27,12 +27,19 @@ struct Cli {
 }
 
 fn main() {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
     let mut output = String::new();
 
     // TODO: Read the file in once, use the reference in all relevant functions
 
     // wc always uses this order: lines, words, chars, bytes, max-line-length
+
+    // If no parameters have been provided, set the default -c -l -w
+    if !(cli.lines || cli.words || cli.chars || cli.bytes) {
+        cli.bytes = true;
+        cli.lines = true;
+        cli.words = true;
+    }
 
     if cli.lines {
         let lines = count_lines(&cli.file).unwrap();
