@@ -1,38 +1,85 @@
 use clap::Parser;
-use std::{fs::metadata, path::PathBuf};
+use std::{
+    fs::{metadata, File},
+    io::{BufRead, BufReader},
+    path::PathBuf,
+};
 
 #[derive(Parser)]
 struct Cli {
     file: PathBuf,
+
     #[arg(short = 'c')]
     #[arg(long = "bytes")]
     bytes: bool,
+
+    #[arg(short = 'l')]
+    #[arg(long = "lines")]
+    lines: bool,
 }
 
 fn main() {
     let cli = Cli::parse();
+    let mut output = String::new();
+
+    // TODO: Read the file in once, use the reference in all relevant functions
+
+    // wc always uses this order: lines, words, chars, bytes, max-line-length
+
+    if cli.lines {
+        let lines = count_lines(&cli.file).unwrap();
+
+        output.push_str(lines.to_string().as_str());
+        output.push(' ');
+    }
 
     if cli.bytes {
         let bytes = count_bytes(&cli.file).unwrap();
-        let output_path = &cli.file.to_str().unwrap();
-        println!("{} {}", bytes, output_path)
+
+        output.push_str(bytes.to_string().as_str());
+        output.push(' ');
     }
+
+    output.push_str(&cli.file.to_str().unwrap());
+    println!("{}", output)
 }
 
 fn count_bytes(path: &PathBuf) -> Result<u64, Box<dyn std::error::Error>> {
     Ok(metadata(path)?.len())
 }
 
+fn count_lines(path: &PathBuf) -> Result<u64, Box<dyn std::error::Error>> {
+    let mut num_lines: u64 = 0;
+
+    let file = File::open(path)?;
+    let lines = BufReader::new(file).lines();
+    let _ = lines.inspect(|_| num_lines += 1).collect::<Vec<_>>();
+
+    Ok(num_lines)
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
-    use crate::count_bytes;
+    use crate::{count_bytes, count_lines};
+
+    fn get_test_file() -> PathBuf {
+        let mut test_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        test_file.push("test_files/test.txt");
+
+        test_file
+    }
 
     #[test]
     fn check_bytes() {
-        let mut test_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        test_file.push("test_files/test.txt");
+        let test_file = get_test_file();
         assert_eq!(342190, count_bytes(&test_file).unwrap());
+    }
+
+    #[test]
+    fn check_lines() {
+        let test_file = get_test_file();
+        assert_eq!(7145, count_lines(&test_file).unwrap());
     }
 }
