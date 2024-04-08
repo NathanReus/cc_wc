@@ -20,6 +20,10 @@ struct Cli {
     #[arg(short = 'w')]
     #[arg(long = "words")]
     words: bool,
+
+    #[arg(short = 'm')]
+    #[arg(long = "chars")]
+    chars: bool,
 }
 
 fn main() {
@@ -41,6 +45,13 @@ fn main() {
         let words = count_words(&cli.file).unwrap();
 
         output.push_str(words.to_string().as_str());
+        output.push(' ');
+    }
+
+    if cli.chars {
+        let chars = count_chars(&cli.file).unwrap();
+
+        output.push_str(chars.to_string().as_str());
         output.push(' ');
     }
 
@@ -87,6 +98,26 @@ fn count_words(path: &PathBuf) -> Result<u64, Box<dyn std::error::Error>> {
     Ok(num_words)
 }
 
+fn count_chars(path: &PathBuf) -> Result<u64, Box<dyn std::error::Error>> {
+    let mut num_chars: u64 = 0;
+
+    let file = File::open(path)?;
+    let lines = BufReader::new(file).lines();
+
+    let _ = lines
+        .inspect(|line| {
+            let _ = line
+                .as_ref()
+                .unwrap()
+                .split("")
+                .map(|_| num_chars += 1)
+                .collect::<Vec<_>>();
+        })
+        .collect::<Vec<_>>();
+
+    Ok(num_chars)
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -116,5 +147,11 @@ mod tests {
     fn check_words() {
         let test_file = get_test_file();
         assert_eq!(58164, count_words(&test_file).unwrap());
+    }
+
+    #[test]
+    fn check_chars() {
+        let test_file = get_test_file();
+        assert_eq!(339292, count_chars(&test_file).unwrap());
     }
 }
