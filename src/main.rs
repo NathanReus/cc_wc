@@ -16,6 +16,10 @@ struct Cli {
     #[arg(short = 'l')]
     #[arg(long = "lines")]
     lines: bool,
+
+    #[arg(short = 'w')]
+    #[arg(long = "words")]
+    words: bool,
 }
 
 fn main() {
@@ -30,6 +34,13 @@ fn main() {
         let lines = count_lines(&cli.file).unwrap();
 
         output.push_str(lines.to_string().as_str());
+        output.push(' ');
+    }
+
+    if cli.words {
+        let words = count_words(&cli.file).unwrap();
+
+        output.push_str(words.to_string().as_str());
         output.push(' ');
     }
 
@@ -49,20 +60,38 @@ fn count_bytes(path: &PathBuf) -> Result<u64, Box<dyn std::error::Error>> {
 }
 
 fn count_lines(path: &PathBuf) -> Result<u64, Box<dyn std::error::Error>> {
-    let mut num_lines: u64 = 0;
+    let file = File::open(path)?;
+    let lines = BufReader::new(file).lines();
+    let num_lines = u64::try_from(lines.count()).unwrap();
+
+    Ok(num_lines)
+}
+
+fn count_words(path: &PathBuf) -> Result<u64, Box<dyn std::error::Error>> {
+    let mut num_words: u64 = 0;
 
     let file = File::open(path)?;
     let lines = BufReader::new(file).lines();
-    let _ = lines.inspect(|_| num_lines += 1).collect::<Vec<_>>();
 
-    Ok(num_lines)
+    let _ = lines
+        .inspect(|line| {
+            let _ = line
+                .as_ref()
+                .unwrap()
+                .split_whitespace()
+                .map(|_| num_words += 1)
+                .collect::<Vec<_>>();
+        })
+        .collect::<Vec<_>>();
+
+    Ok(num_words)
 }
 
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
-    use crate::{count_bytes, count_lines};
+    use crate::*;
 
     fn get_test_file() -> PathBuf {
         let mut test_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -81,5 +110,11 @@ mod tests {
     fn check_lines() {
         let test_file = get_test_file();
         assert_eq!(7145, count_lines(&test_file).unwrap());
+    }
+
+    #[test]
+    fn check_words() {
+        let test_file = get_test_file();
+        assert_eq!(58164, count_words(&test_file).unwrap());
     }
 }
