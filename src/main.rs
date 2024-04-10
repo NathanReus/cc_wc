@@ -1,13 +1,13 @@
 use clap::Parser;
 use std::{
-    fs::{metadata, File},
-    io::{BufRead, BufReader},
+    fs::{self, metadata, File},
+    io::{stdin, BufRead, BufReader},
     path::PathBuf,
 };
 
 #[derive(Parser)]
 struct Cli {
-    file: PathBuf,
+    file: Option<PathBuf>,
 
     #[arg(short = 'c')]
     #[arg(long = "bytes")]
@@ -29,10 +29,35 @@ struct Cli {
 fn main() {
     let mut cli = Cli::parse();
     let mut output = String::new();
+    let mut using_stdin = false;
+    let mut num_lines: u64 = 0;
 
-    // TODO: Read the file in once, use the reference in all relevant functions
+    // Check whether a filename was provided. Open it or read from stdin
+    let contents = match &cli.file {
+        Some(file) => fs::read_to_string(file).unwrap(),
+        None => {
+            using_stdin = true;
 
-    // wc always uses this order: lines, words, chars, bytes, max-line-length
+            let stdin = stdin();
+            let mut buffer = String::new();
+            loop {
+                match stdin.read_line(&mut buffer) {
+                    Ok(len) => {
+                        if len == 0 {
+                            break;
+                        } else {
+                            num_lines += 1;
+                        }
+                    }
+                    Err(_error) => {
+                        panic!("Failed to read file");
+                    }
+                }
+            }
+
+            buffer
+        }
+    };
 
     // If no parameters have been provided, set the default -c -l -w
     if !(cli.lines || cli.words || cli.chars || cli.bytes) {
@@ -41,61 +66,66 @@ fn main() {
         cli.words = true;
     }
 
+    // wc always uses this order: lines, words, chars, bytes, max-line-length
     if cli.lines {
-        let lines = count_lines(&cli.file).unwrap();
+        let mut lines = 0;
+        if using_stdin {
+            lines = num_lines;
+        } else {
+            lines = count_lines(&contents).unwrap();
+        }
 
         output.push_str(lines.to_string().as_str());
         output.push(' ');
     }
 
     if cli.words {
-        let words = count_words(&cli.file).unwrap();
+        let words = count_words(&contents).unwrap();
 
         output.push_str(words.to_string().as_str());
         output.push(' ');
     }
 
     if cli.chars {
-        let chars = count_chars(&cli.file).unwrap();
+        let chars = count_chars(&contents).unwrap();
 
         output.push_str(chars.to_string().as_str());
         output.push(' ');
     }
 
     if cli.bytes {
-        let bytes = count_bytes(&cli.file).unwrap();
+        let bytes = count_bytes(&contents).unwrap();
 
         output.push_str(bytes.to_string().as_str());
         output.push(' ');
     }
 
-    output.push_str(&cli.file.to_str().unwrap());
+    if !using_stdin {
+        output.push_str(&cli.file.unwrap().to_str().unwrap());
+    }
+
     println!("{}", output)
 }
 
-fn count_bytes(path: &PathBuf) -> Result<u64, Box<dyn std::error::Error>> {
-    Ok(metadata(path)?.len())
+fn count_bytes(contents: &String) -> Result<u64, Box<dyn std::error::Error>> {
+    Ok(u64::try_from(contents.len())?)
 }
 
-fn count_lines(path: &PathBuf) -> Result<u64, Box<dyn std::error::Error>> {
-    let file = File::open(path)?;
-    let lines = BufReader::new(file).lines();
+fn count_lines(contents: &String) -> Result<u64, Box<dyn std::error::Error>> {
+    let lines = contents.lines();
     let num_lines = u64::try_from(lines.count()).unwrap();
 
     Ok(num_lines)
 }
 
-fn count_words(path: &PathBuf) -> Result<u64, Box<dyn std::error::Error>> {
+fn count_words(contents: &String) -> Result<u64, Box<dyn std::error::Error>> {
     let mut num_words: u64 = 0;
 
-    let file = File::open(path)?;
-    let lines = BufReader::new(file).lines();
+    let lines = contents.lines();
 
     let _ = lines
         .inspect(|line| {
             let _ = line
-                .as_ref()
-                .unwrap()
                 .split_whitespace()
                 .map(|_| num_words += 1)
                 .collect::<Vec<_>>();
@@ -105,20 +135,14 @@ fn count_words(path: &PathBuf) -> Result<u64, Box<dyn std::error::Error>> {
     Ok(num_words)
 }
 
-fn count_chars(path: &PathBuf) -> Result<u64, Box<dyn std::error::Error>> {
+fn count_chars(contents: &String) -> Result<u64, Box<dyn std::error::Error>> {
     let mut num_chars: u64 = 0;
 
-    let file = File::open(path)?;
-    let lines = BufReader::new(file).lines();
+    let lines = contents.lines();
 
     let _ = lines
         .inspect(|line| {
-            let _ = line
-                .as_ref()
-                .unwrap()
-                .split("")
-                .map(|_| num_chars += 1)
-                .collect::<Vec<_>>();
+            let _ = line.split("").map(|_| num_chars += 1).collect::<Vec<_>>();
         })
         .collect::<Vec<_>>();
 
@@ -131,34 +155,34 @@ mod tests {
 
     use crate::*;
 
-    fn get_test_file() -> PathBuf {
+    fn read_test_file() -> String {
         let mut test_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         test_file.push("test_files/test.txt");
 
-        test_file
+        fs::read_to_string(test_file).unwrap()
     }
 
     #[test]
     fn check_bytes() {
-        let test_file = get_test_file();
+        let test_file = read_test_file();
         assert_eq!(342190, count_bytes(&test_file).unwrap());
     }
 
     #[test]
     fn check_lines() {
-        let test_file = get_test_file();
+        let test_file = read_test_file();
         assert_eq!(7145, count_lines(&test_file).unwrap());
     }
 
     #[test]
     fn check_words() {
-        let test_file = get_test_file();
+        let test_file = read_test_file();
         assert_eq!(58164, count_words(&test_file).unwrap());
     }
 
     #[test]
     fn check_chars() {
-        let test_file = get_test_file();
+        let test_file = read_test_file();
         assert_eq!(339292, count_chars(&test_file).unwrap());
     }
 }
